@@ -234,6 +234,7 @@ jobs:
         run: |
           export AWS_ACCOUNT_ID=$(echo "${{ steps.login-ecr.outputs.registry }}" | cut -d'.' -f1)
           CLUSTER_NAME="${{ vars.ECS_CLUSTER_NAME }}"
+          SERVICE_NAME="${{ vars.ECS_SERVICE_NAME_PREFIX }}"
 
           # Preparar arquivo de definição de task
           cp .github/.aws/task-definition.json task-definition-temp.json
@@ -245,8 +246,8 @@ jobs:
           sed -i "s/{{ENVIRONMENT}}/$ENVIRONMENT/g" task-definition-temp.json
           sed -i "s/{{RELEASE_VERSION}}/v${{ github.run_number }}/g" task-definition-temp.json
           sed -i "s/{{GIT_COMMIT}}/${{ github.sha }}/g" task-definition-temp.json
-          sed -i "s/{{ECS_SERVICE}}/${{ vars.ECS_SERVICE_NAME_PREFIX }}/g" task-definition-temp.json
-          sed -i "s/{{ECS_CLUSTER}}/${{ vars.ECS_CLUSTER_NAME }}/g" task-definition-temp.json
+          sed -i "s/{{ECS_SERVICE}}/$SERVICE_NAME/g" task-definition-temp.json
+          sed -i "s/{{ECS_CLUSTER}}/$CLUSTER_NAME/g" task-definition-temp.json
 
           # Registrar nova definição de task
           TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
@@ -256,8 +257,8 @@ jobs:
 
           # Atualizar o serviço ECS existente
           aws ecs update-service \
-            --cluster "${{ vars.ECS_CLUSTER_NAME }}" \
-            --service "${{ vars.ECS_SERVICE_NAME_PREFIX }}" \
+            --cluster "$CLUSTER_NAME" \
+            --service "$SERVICE_NAME" \
             --task-definition "$TASK_DEFINITION_ARN" \
             --force-new-deployment
 
@@ -265,8 +266,8 @@ jobs:
           # Checagem rápida de status
           echo "📊 Status atual do serviço:"
           aws ecs describe-services \
-            --cluster "${{ vars.ECS_CLUSTER_NAME }}" \
-            --services "${{ vars.ECS_SERVICE_NAME_PREFIX }}" \
+            --cluster "$CLUSTER_NAME" \
+            --services "$SERVICE_NAME" \
             --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,TaskDefinition:taskDefinition}' \
             --output table
 
