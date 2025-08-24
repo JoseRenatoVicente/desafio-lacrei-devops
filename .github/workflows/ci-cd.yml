@@ -364,7 +364,7 @@ jobs:
             ## 🚀 Resumo do Deploy
 
             **Ambiente:** ${{ steps.deployment.outputs.environment }}
-            **Deploy realizado em:** $(date)
+            **Deploy realizado em:** ${{ github.run_started_at }}
             **Commit:** ${{ github.sha }}
 
             ## 🔗 URLs de Acesso (HTTPS)
