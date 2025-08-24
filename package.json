@@ -1,0 +1,67 @@
+{
+  "name": "template-ci-cd",
+  "version": "1.0.0",
+  "description": "Aplicação simples Node.js para template CI/CD",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "build": "echo 'Build completed successfully'",
+    "pretest": "npm run lint",
+    "ci": "npm ci && npm run lint && npm run test",
+    "docker:build": "docker build -t template-ci-cd .",
+    "docker:run": "docker run -p 3000:3000 template-ci-cd",
+    "docker:run:dev": "docker run -p 3000:3000 -e NODE_ENV=development template-ci-cd",
+    "ecs:setup": "bash setup-ecs-infrastructure.sh",
+    "ecs:deploy:dev": "bash deploy-ecs.sh dev",
+    "ecs:deploy:prod": "bash deploy-ecs.sh prod",
+    "aws:login": "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin",
+    "docker:push:dev": "docker tag template-ci-cd:latest $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:dev && docker push $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:dev",
+    "docker:push:prod": "docker tag template-ci-cd:latest $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:prod && docker push $AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:prod"
+  },
+  "keywords": [
+    "nodejs",
+    "api",
+    "ci-cd"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-config-standard": "^17.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "eslint-plugin-n": "^16.6.2",
+    "eslint-plugin-promise": "^6.1.1",
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.3",
+    "prettier": "^3.2.5",
+    "supertest": "^6.3.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "<rootDir>/tests/**/*.test.js"
+    ],
+    "collectCoverageFrom": [
+      "src/front/**/*.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 60,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    }
+  }
+}

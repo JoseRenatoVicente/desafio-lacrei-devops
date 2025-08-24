@@ -1,0 +1,394 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  security-events: write
+  actions: read
+  deployments: write
+
+env:
+  IMAGE_NAME: template-ci-cd
+
+jobs:
+  lint:
+    name: Code Quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check Prettier formatting
+        run: npm run format:check
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests with coverage
+        run: npm test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  build:
+    name: Build Application
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run build
+        run: npm run build
+
+      - name: Create build artifact
+        run: |
+          mkdir -p build-artifacts
+          find . -maxdepth 1 -type f -exec cp {} build-artifacts/ \;
+          cp -r coverage build-artifacts/ 2>/dev/null || true
+          rm -rf build-artifacts/node_modules
+          rm -rf build-artifacts/.git
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: build-artifacts/
+          retention-days: 7
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image for scanning
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          platforms: linux/amd64
+          tags: ${{ env.IMAGE_NAME }}:scan
+          cache-from: type=gha,scope=buildx-scan
+        timeout-minutes: 5
+
+      - name: Verify Docker image exists
+        run: |
+          docker images | grep template-ci-cd || echo "❌ Image not found"
+          docker inspect ${{ env.IMAGE_NAME }}:scan || echo "❌ Image inspect failed"
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          timeout: '5m'
+        continue-on-error: true
+
+      - name: Check if SARIF file exists
+        id: check_sarif
+        run: |
+          if [ -f "trivy-results.sarif" ]; then
+            echo "sarif_exists=true" >> $GITHUB_OUTPUT
+            echo "✅ SARIF file created successfully"
+            ls -la trivy-results.sarif
+          else
+            echo "sarif_exists=false" >> $GITHUB_OUTPUT
+            echo "❌ SARIF file not found"
+          fi
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always() && steps.check_sarif.outputs.sarif_exists == 'true'
+        with:
+          sarif_file: 'trivy-results.sarif'
+          category: 'trivy-container-scan'
+          wait-for-processing: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Show SARIF upload status
+        if: always() && steps.check_sarif.outputs.sarif_exists == 'true'
+        run: |
+          echo "✅ SARIF file upload attempted"
+          echo "📄 File: trivy-results.sarif"
+          echo "🔍 Check the Security tab for scan results"
+
+      - name: Run Trivy for PR comments
+        uses: aquasecurity/trivy-action@master
+        if: github.event_name == 'pull_request'
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: 'table'
+          exit-code: '0'
+
+  deploy-ecs:
+    name: Deploy to AWS ECS
+    runs-on: ubuntu-latest
+    needs: [lint, test, build]
+    timeout-minutes: 20
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+      url: ${{ steps.deployment.outputs.service_url }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+            echo "IMAGE_TAG=prod-${{ github.sha }}" >> $GITHUB_ENV
+            echo "SERVICE_NAME=template-ci-cd-service-prod" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "IMAGE_TAG=staging-${{ github.sha }}" >> $GITHUB_ENV
+            echo "SERVICE_NAME=template-ci-cd-service-staging" >> $GITHUB_ENV
+          fi
+          echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+          echo "ECR_REPOSITORY=template-ci-cd" >> $GITHUB_ENV
+
+      - name: Build Docker image
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+
+      - name: Push image to Amazon ECR
+        run: |
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Deploy to Amazon ECS
+        run: |
+          export AWS_ACCOUNT_ID=$(echo "${{ steps.login-ecr.outputs.registry }}" | cut -d'.' -f1)
+          CLUSTER_NAME="${{ vars.ECS_CLUSTER_NAME }}"
+
+          # Variáveis de depuração
+          echo "=== VARIÁVEIS DE DEBUG ==="
+          echo "ECS_CLUSTER_NAME das variáveis: '${{ vars.ECS_CLUSTER_NAME }}'"
+          echo "SERVICE_NAME: '$SERVICE_NAME'"
+          echo "CONTAINER_NAME: '$CONTAINER_NAME'"
+          echo "ENVIRONMENT: '$ENVIRONMENT'"
+          echo "========================"
+
+          echo "Cluster: $CLUSTER_NAME"
+          echo "Serviço: $SERVICE_NAME"
+          echo "Imagem: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
+          # Preparar arquivo de definição de task
+          cp .github/.aws/task-definition.json task-definition-temp.json
+
+          # Substituir placeholders na definição de task
+          sed -i "s/{{ACCOUNT_ID}}/$AWS_ACCOUNT_ID/g" task-definition-temp.json
+          sed -i "s|{{ECR_REPOSITORY_URI}}|$ECR_REGISTRY/$ECR_REPOSITORY|g" task-definition-temp.json
+          sed -i "s/{{IMAGE_TAG}}/$IMAGE_TAG/g" task-definition-temp.json
+          sed -i "s/{{ENVIRONMENT}}/$ENVIRONMENT/g" task-definition-temp.json
+          sed -i "s/{{RELEASE_VERSION}}/v${{ github.run_number }}/g" task-definition-temp.json
+          sed -i "s/{{GIT_COMMIT}}/${{ github.sha }}/g" task-definition-temp.json
+          sed -i "s/{{ECS_SERVICE}}/$ECS_SERVICE_NAME_PREFIX/g" task-definition-temp.json
+          sed -i "s/{{ECS_CLUSTER}}/$ECS_CLUSTER_NAME/g" task-definition-temp.json
+
+          # Registrar nova definição de task
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-temp.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+
+          # Atualizar o serviço ECS existente
+          aws ecs update-service \
+            --cluster "${{ vars.ECS_CLUSTER_NAME }}" \
+            --service "${{ vars.ECS_SERVICE_NAME_PREFIX }}" \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --force-new-deployment
+
+
+          # Checagem rápida de status
+          echo "📊 Status atual do serviço:"
+          aws ecs describe-services \
+            --cluster "${{ vars.ECS_CLUSTER_NAME }}" \
+            --services "${{ vars.ECS_SERVICE_NAME_PREFIX }}" \
+            --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,TaskDefinition:taskDefinition}' \
+            --output table
+
+      - name: Get deployment info
+        id: deployment
+        run: |
+          echo "🔍 Getting deployment information..."
+
+          # 1. Try Service Discovery config first (most reliable)
+          SERVICE_URL=""
+          if [ -f "service-discovery-config.env" ]; then
+            source service-discovery-config.env
+            if [ "$ENVIRONMENT" = "prod" ]; then
+              SERVICE_URL="$API_PROD_URL"
+              echo "🌐 Using Service Discovery PROD URL: $SERVICE_URL"
+            else
+              SERVICE_URL="$API_STAGING_URL"
+              echo "🌐 Using Service Discovery STAGING URL: $SERVICE_URL"
+            fi
+          fi
+
+          # 2. Fallback: Try legacy api-gateway-config.env
+          if [ -z "$SERVICE_URL" ] && [ -f "api-gateway-config.env" ]; then
+            if [ "$ENVIRONMENT" = "prod" ]; then
+              API_URL=$(grep "API_PROD_URL=" api-gateway-config.env | cut -d'=' -f2 || echo "")
+              if [ -n "$API_URL" ] && [ "$API_URL" != "" ]; then
+                SERVICE_URL="$API_URL"
+                echo "🌐 Using Legacy API Gateway PROD URL: $SERVICE_URL"
+              fi
+            else
+              API_URL=$(grep "API_STAGING_URL=" api-gateway-config.env | cut -d'=' -f2 || echo "")
+              if [ -n "$API_URL" ] && [ "$API_URL" != "" ]; then
+                SERVICE_URL="$API_URL"
+                echo "🌐 Using Legacy API Gateway STAGING URL: $SERVICE_URL"
+              fi
+            fi
+          fi
+
+          # 3. Fallback: Direct API Gateway discovery (no IP dependency)
+          if [ -z "$SERVICE_URL" ]; then
+            echo "🔍 Searching for API Gateway directly..."
+            if [ "$ENVIRONMENT" = "prod" ]; then
+              API_ID=$(aws apigatewayv2 get-apis --query 'Items[?Name==`template-ci-cd-api-prod`].ApiId' --output text 2>/dev/null || echo "")
+            else
+              API_ID=$(aws apigatewayv2 get-apis --query 'Items[?Name==`template-ci-cd-api-staging`].ApiId' --output text 2>/dev/null || echo "")
+            fi
+            
+            if [ -n "$API_ID" ] && [ "$API_ID" != "None" ] && [ "$API_ID" != "" ]; then
+              SERVICE_URL="https://$API_ID.execute-api.us-east-1.amazonaws.com"
+              echo "🌐 Found API Gateway: $SERVICE_URL"
+            fi
+          fi
+
+          # 4. Final fallback: Informational message (no ECS IP - unreliable)
+          if [ -z "$SERVICE_URL" ]; then
+            SERVICE_URL="https://github.com/JoseRenatoVicente/template-ci-cd/deployments"
+            echo "⚠️ No API Gateway found, deployment successful but URL not available"
+            echo "ℹ️  This is expected for first-time setup or if Service Discovery is not configured"
+          fi
+
+          echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
+
+      - name: Test deployed service
+        if: contains(steps.deployment.outputs.service_url, 'http')
+        run: |
+          echo "🧪 Testing deployed service..."
+          SERVICE_URL="${{ steps.deployment.outputs.service_url }}"
+          ENVIRONMENT="${{ steps.deployment.outputs.environment }}"
+
+          echo "Testing service at: $SERVICE_URL"
+
+          # Test health endpoint
+          echo "Testing health endpoint..."
+          curl -f "$SERVICE_URL/health" || echo "Health endpoint test failed"
+
+          # Test status endpoint  
+          echo "Testing status endpoint..."
+          curl -f "$SERVICE_URL/status" || echo "Status endpoint test failed"
+
+          # Test root endpoint
+          echo "Testing root endpoint..."
+          curl -f "$SERVICE_URL/" || echo "Root endpoint test failed"
+
+      - name: Criar Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release v${{ github.run_number }} - ${{ steps.deployment.outputs.environment }}
+          body: |
+            ## 🚀 Resumo do Deploy
+
+            **Ambiente:** ${{ steps.deployment.outputs.environment }}
+            **Deploy realizado em:** $(date)
+            **Commit:** ${{ github.sha }}
+
+            ## 🔗 URLs de Acesso (HTTPS)
+
+            **🌍 API Produção:** ${{ steps.deployment.outputs.service_url }}
+
+            ### 📋 Endpoints da API:
+            - **Health Check:** `${{ steps.deployment.outputs.service_url }}/health`
+            - **Status:** `${{ steps.deployment.outputs.service_url }}/status`
+            - **Root:** `${{ steps.deployment.outputs.service_url }}/`
+
+            ## 📝 Alterações
+
+            ${{ github.event.head_commit.message }}
+          draft: false
+          prerelease: false

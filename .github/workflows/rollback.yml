@@ -1,0 +1,68 @@
+name: Rollback ECS Service
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag da imagem Docker para rollback (ex: prod-<sha> ou staging-<sha>)'
+        required: true
+
+jobs:
+  rollback-ecs:
+    name: Rollback ECS Service to Specific Docker Image
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set environment variables
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
+            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
+            echo "SERVICE_NAME=template-ci-cd-service-prod" >> $GITHUB_ENV
+          else
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "SERVICE_NAME=template-ci-cd-service-staging" >> $GITHUB_ENV
+          fi
+          echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
+          echo "ECR_REPOSITORY=template-ci-cd" >> $GITHUB_ENV
+
+      - name: Prepare rollback task definition
+        run: |
+          export AWS_ACCOUNT_ID=$(echo "${{ steps.login-ecr.outputs.registry }}" | cut -d'.' -f1)
+          cp task-definition.json task-definition-rollback.json
+          sed -i "s/{{ACCOUNT_ID}}/$AWS_ACCOUNT_ID/g" task-definition-rollback.json
+          sed -i "s|{{ECR_REPOSITORY_URI}}|$ECR_REGISTRY/$ECR_REPOSITORY|g" task-definition-rollback.json
+          sed -i "s/{{IMAGE_TAG}}/${{ github.event.inputs.image_tag }}/g" task-definition-rollback.json
+          sed -i "s/{{ENVIRONMENT}}/$ENVIRONMENT/g" task-definition-rollback.json
+
+      - name: Register rollback task definition
+        run: |
+          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
+            --cli-input-json file://task-definition-rollback.json \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
+          echo "Rollback task definition: $TASK_DEFINITION_ARN"
+          echo "TASK_DEFINITION_ARN=$TASK_DEFINITION_ARN" >> $GITHUB_ENV
+
+      - name: Update ECS service to rollback image
+        run: |
+          aws ecs update-service \
+            --cluster "${{ vars.ECS_CLUSTER_NAME }}" \
+            --service "${{ vars.ECS_SERVICE_NAME_PREFIX }}" \
+            --task-definition "$TASK_DEFINITION_ARN" \
+            --force-new-deployment
+          echo "Rollback realizado para a imagem: ${{ github.event.inputs.image_tag }}"
