@@ -257,8 +257,8 @@ jobs:
           sed -i "s/{{ENVIRONMENT}}/$ENVIRONMENT/g" task-definition-temp.json
           sed -i "s/{{RELEASE_VERSION}}/v${{ github.run_number }}/g" task-definition-temp.json
           sed -i "s/{{GIT_COMMIT}}/${{ github.sha }}/g" task-definition-temp.json
-          sed -i "s/{{ECS_SERVICE}}/$ECS_SERVICE_NAME_PREFIX/g" task-definition-temp.json
-          sed -i "s/{{ECS_CLUSTER}}/$ECS_CLUSTER_NAME/g" task-definition-temp.json
+          sed -i "s/{{ECS_SERVICE}}/${{ vars.ECS_SERVICE_NAME_PREFIX }}/g" task-definition-temp.json
+          sed -i "s/{{ECS_CLUSTER}}/${{ vars.ECS_CLUSTER_NAME }}/g" task-definition-temp.json
 
           # Registrar nova definição de task
           TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
