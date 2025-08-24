@@ -98,6 +98,17 @@ dist
 # Sveltekit cache directory
 .svelte-kit/
 
+# Terraform files
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+*.tfvars
+!terraform.tfvars.staging
+!terraform.tfvars.prod
+terraform.tfvars.dev
+*.tfbackup
+
 # vitepress build output
 **/.vitepress/dist
 
@@ -107,8 +118,12 @@ dist
 # Docusaurus cache and generated files
 .docusaurus
 
-# Serverless directories
+# Serverless directories (legacy)
 .serverless/
+
+# ECS temporary files
+task-definition-temp.json
+service-definition-temp.json
 
 # FuseBox cache
 .fusebox/
