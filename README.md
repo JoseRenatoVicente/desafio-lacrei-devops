@@ -61,6 +61,26 @@ graph TD
 	B -- VPC_Subnets --> G[VPC_Subnets]
 ```
 
+# Infraestrutura com Terraform
+
+Este projeto possui scripts em Terraform para construir toda a infraestrutura necessária na AWS.
+
+## Como utilizar
+
+1. Ajuste as variáveis de acordo com seu ambiente nos arquivos:
+	- `terraform/terraform.tfvars` (produção)
+	- `terraform/terraform.tfvars.staging` (staging)
+2. Acesse a pasta do Terraform:
+	```powershell
+	cd .\terraform\
+	```
+3. Execute o script de deploy:
+	```powershell
+	.\deploy.ps1
+	```
+
+O script irá aplicar a infraestrutura conforme as configurações definidas.
+
 ## 📦 Estrutura
 
 ```
