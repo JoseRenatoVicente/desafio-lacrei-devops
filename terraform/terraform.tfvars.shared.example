@@ -1,0 +1,4 @@
+aws_region   = "us-east-1"
+github_org   = "JoseRenatoVicente"
+github_repo  = "*"
+rolename     = "GitHubAction-AssumeRoleWithAction"
