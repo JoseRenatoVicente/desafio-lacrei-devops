@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory=$true)]
-    [ValidateSet("prod", "staging")]
+    [ValidateSet("prod", "staging", "shared")]
     [string]$Environment
 )
 
@@ -21,19 +21,28 @@ function Invoke-Terraform {
     }
 }
 
-$varFile = "terraform.tfvars"
-if ($Environment -eq "staging") {
-    $varFile = "terraform.tfvars.staging"
-}
 
-$workspace = "default"
-if ($Environment -eq "staging") {
+# Definir paths e workspaces conforme ambiente
+if ($Environment -eq "shared") {
+    $tfDir = "shared"
+    $varFile = "../terraform.tfvars.shared"
+    $workspace = "default"
+} elseif ($Environment -eq "staging") {
+    $tfDir = "."
+    $varFile = "terraform.tfvars.staging"
     $workspace = "staging"
+} else {
+    $tfDir = "."
+    $varFile = "terraform.tfvars"
+    $workspace = "default"
 }
 
 Write-Host "=== Deploy para ambiente: $Environment ===" -ForegroundColor Green
 Write-Host "Workspace: $workspace" -ForegroundColor Yellow
 Write-Host "Arquivo de variáveis: $varFile" -ForegroundColor Yellow
+Write-Host "Diretório Terraform: $tfDir" -ForegroundColor Yellow
+
+Push-Location $tfDir
 
 Write-Host "Inicializando Terraform..." -ForegroundColor Cyan
 terraform init
@@ -58,8 +67,11 @@ if ($currentState) {
 Write-Host "Executando terraform plan..." -ForegroundColor Cyan
 Invoke-Terraform -Command "plan" -VarFile $varFile
 
+Pop-Location
+
 $confirm = Read-Host "Deseja aplicar as alterações? (S/N)"
 if ($confirm -eq "S" -or $confirm -eq "s") {
+    Push-Location $tfDir
     Write-Host "Aplicando alterações no ambiente $Environment..." -ForegroundColor Green
     Invoke-Terraform -Command "apply" -VarFile $varFile
     
@@ -68,6 +80,7 @@ if ($confirm -eq "S" -or $confirm -eq "s") {
     
     Write-Host "Executando terraform output..." -ForegroundColor Cyan
     terraform output
+    Pop-Location
 } else {
     Write-Host "Deploy cancelado pelo usuário" -ForegroundColor Yellow
 }
