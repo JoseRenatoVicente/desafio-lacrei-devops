@@ -248,7 +248,7 @@ jobs:
           sed -i "s/{{ECS_SERVICE}}/$SERVICE_NAME/g" task-definition-temp.json
           sed -i "s/{{ECS_CLUSTER}}/$CLUSTER_NAME/g" task-definition-temp.json
           sed -i "s/{{ORG_NAME}}/${{ vars.ORG_NAME }}/g" task-definition-temp.json
-          
+
           # Registrar nova definição de task
           TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
             --cli-input-json file://task-definition-temp.json \
