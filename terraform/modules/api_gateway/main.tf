@@ -1,29 +1,29 @@
 # API Gateway
 resource "aws_apigatewayv2_api" "main" {
-  name          = "${var.project_name}-api-${var.environment}"
+  name          = "${var.organization_name}-${var.environment}-api-gw"
   protocol_type = "HTTP"
 
   tags = {
-    Name        = "${var.project_name}-api-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-api-gw"
     Environment = var.environment
   }
 }
 
 # VPC Link
 resource "aws_apigatewayv2_vpc_link" "main" {
-  name               = "${var.project_name}-vpc-link-${var.environment}"
+  name               = "${var.organization_name}-${var.environment}-vpc-link"
   security_group_ids = [aws_security_group.vpc_link.id]
   subnet_ids         = var.private_subnets
 
   tags = {
-    Name        = "${var.project_name}-vpc-link-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-vpc-link"
     Environment = var.environment
   }
 }
 
 # Security Group for VPC Link
 resource "aws_security_group" "vpc_link" {
-  name_prefix = "${var.project_name}-vpc-link"
+  name_prefix = "${var.organization_name}-${var.environment}-vpc-link"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -41,7 +41,7 @@ resource "aws_security_group" "vpc_link" {
   }
 
   tags = {
-    Name        = "${var.project_name}-vpc-link-sg-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-vpc-link-sg"
     Environment = var.environment
   }
 }
@@ -91,18 +91,18 @@ resource "aws_apigatewayv2_stage" "main" {
   }
 
   tags = {
-    Name        = "${var.project_name}-stage-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-stage"
     Environment = var.environment
   }
 }
 
 # CloudWatch Log Group for API Gateway
 resource "aws_cloudwatch_log_group" "api_gateway" {
-  name              = "/aws/api-gateway/${var.project_name}-${var.environment}"
+  name              = "/aws/api-gateway/${var.organization_name}-${var.environment}"
   retention_in_days = 30
 
   tags = {
-    Name        = "${var.project_name}-api-logs-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-api-gw-logs"
     Environment = var.environment
   }
 }

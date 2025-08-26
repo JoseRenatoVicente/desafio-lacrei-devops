@@ -4,6 +4,11 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "organization_name" {
+  description = "Nome da organização"
+  type        = string
+}
+
 variable "project_name" {
   description = "Name of the project"
   type        = string
@@ -14,6 +19,21 @@ variable "environment" {
   description = "Environment (e.g., prod, staging)"
   type        = string
   default     = "prod"
+}
+
+variable "ecr_repositories" {
+  description = "Lista de repositórios ECR para criar"
+  type        = list(string)
+}
+
+variable "github_org" {
+  description = "Organização do GitHub"
+  type        = string
+}
+
+variable "github_repo" {
+  description = "Repositório GitHub"
+  type        = string
 }
 
 variable "vpc_cidr" {

@@ -213,25 +213,23 @@ jobs:
         run: |
           if [ "${{ github.ref }}" == "refs/heads/main" ]; then
             echo "ENVIRONMENT=prod" >> $GITHUB_ENV
-            echo "IMAGE_TAG=prod-${{ github.sha }}" >> $GITHUB_ENV
             echo "SERVICE_NAME=template-ci-cd-service-prod" >> $GITHUB_ENV
           else
             echo "ENVIRONMENT=staging" >> $GITHUB_ENV
             echo "IMAGE_TAG=staging-${{ github.sha }}" >> $GITHUB_ENV
             echo "SERVICE_NAME=template-ci-cd-service-staging" >> $GITHUB_ENV
           fi
+          echo "IMAGE_TAG=v${{ github.run_number }}-${{ github.sha }}" >> $GITHUB_ENV
           echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
-          echo "ECR_REPOSITORY=template-ci-cd" >> $GITHUB_ENV
+          echo "ECR_REPOSITORY=${{ vars.ECR_NAMESPACE }}/${{ github.event.repository.name }}" >> $GITHUB_ENV
 
       - name: Build Docker image
         run: |
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
 
       - name: Push image to Amazon ECR
         run: |
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
 
       - name: Deploy to Amazon ECS
         run: |
@@ -251,6 +249,7 @@ jobs:
           sed -i "s/{{GIT_COMMIT}}/${{ github.sha }}/g" task-definition-temp.json
           sed -i "s/{{ECS_SERVICE}}/$SERVICE_NAME/g" task-definition-temp.json
           sed -i "s/{{ECS_CLUSTER}}/$CLUSTER_NAME/g" task-definition-temp.json
+          sed -i "s/{{ORG_NAME}}/${{ vars.ORG_NAME }}/g" task-definition-temp.json
 
           # Registrar nova definição de task
           TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
