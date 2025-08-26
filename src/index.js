@@ -31,6 +31,8 @@ app.get('/', (req, res) => {
     endpoints: {
       status: '/status',
       health: '/health',
+      latency: '/latency',
+      error: '/error',
     },
   });
 });
@@ -39,6 +41,21 @@ app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
     timestamp: new Date().toISOString(),
+  });
+});
+
+app.get('/latency', async (req, res) => {
+  const delayMs = parseInt(req.query.ms, 10) || 5000;
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+  res.status(200).json({
+    message: `Resposta enviada após ${delayMs}ms de latência simulada.`,
+  });
+});
+
+app.get('/error', (req, res) => {
+  res.status(500).json({
+    error: 'Erro interno simulado',
+    message: 'Este endpoint sempre retorna erro 500.',
   });
 });
 
