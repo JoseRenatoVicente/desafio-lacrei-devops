@@ -1,7 +1,9 @@
 
 # ECR Repository
-resource "aws_ecr_repository" "app" {
-  name                 = var.ecr_repository_name
+resource "aws_ecr_repository" "repositories" {
+  for_each = toset(var.ecr_repositories)
+  name = "${var.organization_name}-${var.environment}-ecr/${each.value}"
+  
   image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
@@ -13,14 +15,16 @@ resource "aws_ecr_repository" "app" {
   }
 
   tags = {
-    Name        = "${var.project_name}-ecr-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-ecr/${each.value}"
     Environment = var.environment
   }
 }
 
 # ECR Lifecycle Policy
-resource "aws_ecr_lifecycle_policy" "app" {
-  repository = aws_ecr_repository.app.name
+resource "aws_ecr_lifecycle_policy" "main" {
+  for_each = aws_ecr_repository.repositories
+  repository = each.value.name
+
   policy = jsonencode({
     rules = [
       {
@@ -41,13 +45,13 @@ resource "aws_ecr_lifecycle_policy" "app" {
 
 # Network Load Balancer
 resource "aws_lb" "nlb" {
-  name               = "${var.project_name}-nlb-${var.environment}"
+  name               = "${var.organization_name}-${var.environment}-nlb"
   internal           = false
   load_balancer_type = "network"
   subnets            = aws_subnet.public[*].id
 
   tags = {
-    Name        = "${var.project_name}-nlb-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-nlb"
     Environment = var.environment
   }
 
@@ -58,7 +62,7 @@ resource "aws_lb" "nlb" {
 
 # Target Group para ECS
 resource "aws_lb_target_group" "ecs" {
-  name        = "${var.project_name}-tg-${var.environment}"
+  name        = "${var.organization_name}-${var.environment}-tg"
   port        = var.container_port
   protocol    = "TCP"
   vpc_id      = aws_vpc.main.id
@@ -76,7 +80,7 @@ resource "aws_lb_target_group" "ecs" {
   }
 
   tags = {
-    Name        = "${var.project_name}-tg-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-tg"
     Environment = var.environment
   }
 
@@ -107,7 +111,7 @@ resource "aws_vpc" "main" {
   enable_dns_support   = true
 
   tags = {
-  Name        = "${var.project_name}-vpc-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-vpc"
     Environment = var.environment
   }
 }
@@ -120,7 +124,7 @@ resource "aws_subnet" "public" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
-  Name        = "${var.project_name}-public-${count.index + 1}-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-public-${count.index + 1}"
     Environment = var.environment
   }
 }
@@ -133,7 +137,7 @@ resource "aws_subnet" "private" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
-  Name        = "${var.project_name}-private-${count.index + 1}-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-private-${count.index + 1}"
     Environment = var.environment
   }
 }
@@ -143,7 +147,7 @@ resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
   tags = {
-  Name        = "${var.project_name}-igw-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-igw"
     Environment = var.environment
   }
 }
@@ -154,7 +158,7 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 
   tags = {
-  Name        = "${var.project_name}-nat-eip-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-nat-eip"
     Environment = var.environment
   }
 }
@@ -165,7 +169,7 @@ resource "aws_nat_gateway" "main" {
   subnet_id     = aws_subnet.public[0].id
 
   tags = {
-  Name        = "${var.project_name}-nat-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-nat"
     Environment = var.environment
   }
 }
@@ -180,7 +184,7 @@ resource "aws_route_table" "public" {
   }
 
   tags = {
-  Name        = "${var.project_name}-public-rt-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-public-rt"
     Environment = var.environment
   }
 }
@@ -194,7 +198,7 @@ resource "aws_route_table" "private" {
   }
 
   tags = {
-  Name        = "${var.project_name}-private-rt-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-private-rt"
     Environment = var.environment
   }
 }
@@ -218,7 +222,7 @@ resource "aws_vpc_endpoint" "s3" {
   service_name = "com.amazonaws.${var.aws_region}.s3"
 
   tags = {
-  Name        = "${var.project_name}-s3-endpoint-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-s3-endpoint"
     Environment = var.environment
   }
 }
@@ -233,7 +237,7 @@ resource "aws_vpc_endpoint" "ecr_api" {
   private_dns_enabled = true
 
   tags = {
-  Name        = "${var.project_name}-ecr-api-endpoint-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-ecr-api-endpoint"
     Environment = var.environment
   }
 }
@@ -248,7 +252,7 @@ resource "aws_vpc_endpoint" "ecr_dkr" {
   private_dns_enabled = true
 
   tags = {
-  Name        = "${var.project_name}-ecr-dkr-endpoint-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-ecr-dkr-endpoint"
     Environment = var.environment
   }
 }
@@ -263,14 +267,14 @@ resource "aws_vpc_endpoint" "logs" {
   private_dns_enabled = true
 
   tags = {
-  Name        = "${var.project_name}-logs-endpoint-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-logs-endpoint"
     Environment = var.environment
   }
 }
 
 # Security Group for VPC Endpoints
 resource "aws_security_group" "vpc_endpoints" {
-  name_prefix = "${var.project_name}-vpc-endpoints"
+  name_prefix = "${var.organization_name}-${var.environment}-vpc-endpoints"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -281,7 +285,7 @@ resource "aws_security_group" "vpc_endpoints" {
   }
 
   tags = {
-  Name        = "${var.project_name}-vpc-endpoints-sg-${var.environment}"
+  Name        = "${var.organization_name}-${var.environment}-vpc-endpoints-sg"
     Environment = var.environment
   }
 }

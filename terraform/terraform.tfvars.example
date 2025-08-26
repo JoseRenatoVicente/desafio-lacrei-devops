@@ -1,6 +1,7 @@
 project_name = "template-ci-cd"
 environment = "prod"
 aws_region = "us-east-1"
+ecr_repositories = ["template-ci-cd"]
 
 vpc_cidr = "10.0.0.0/16"
 container_image = "038462749081.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:latest"

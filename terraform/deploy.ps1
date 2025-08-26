@@ -1,20 +1,27 @@
 param(
     [Parameter(Mandatory=$true)]
     [ValidateSet("prod", "staging", "shared")]
-    [string]$Environment
+    [string]$Environment,
+    [switch]$Destroy
 )
 
 function Invoke-Terraform {
     param(
         [string]$Command,
-        [string]$VarFile
+        [string]$VarFile,
+        [switch]$AutoApprove
     )
     
     $tfCommand = "terraform $Command -var-file=`"$VarFile`""
+    if ($AutoApprove) {
+        $tfCommand += " -auto-approve"
+    }
     Write-Host "Executando: $tfCommand"
-    
-    & terraform $Command -var-file="$VarFile"
-    
+    if ($AutoApprove) {
+        & terraform $Command -var-file="$VarFile" -auto-approve
+    } else {
+        & terraform $Command -var-file="$VarFile"
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Error "Erro ao executar terraform $Command"
         exit 1
@@ -54,6 +61,13 @@ if ($Environment -eq "staging") {
 
 Write-Host "Selecionando workspace: $workspace" -ForegroundColor Cyan
 terraform workspace select $workspace
+
+if ($Destroy) {
+    Write-Host "Destruindo todos os recursos Terraform..." -ForegroundColor Red
+    Invoke-Terraform -Command "destroy" -VarFile $varFile -AutoApprove
+    Pop-Location
+    exit 0
+}
 
 Write-Host "Verificando estado atual..." -ForegroundColor Cyan
 $currentState = terraform state list

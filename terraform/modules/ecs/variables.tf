@@ -1,3 +1,8 @@
+variable "organization_name" {
+  description = "Nome da organização"
+  type        = string
+}
+
 variable "project_name" {
   description = "Name of the project"
   type        = string
@@ -38,12 +43,6 @@ variable "desired_count" {
   description = "Number of ECS tasks to run"
   type        = number
   default     = 1
-}
-
-
-variable "cloudwatch_log_group_name" {
-  description = "Name of the CloudWatch log group"
-  type        = string
 }
 
 variable "nlb_target_group_arn" {
