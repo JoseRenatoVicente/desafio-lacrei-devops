@@ -14,9 +14,9 @@ permissions:
   deployments: write
 
 env:
-  REPO_NAME: template-ci-cd 
+  REPO_NAME: template-ci-cd
   ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
-  ECR_REPOSITORY: ${{ vars.ECR_NAMESPACE }}/template-ci-cd 
+  ECR_REPOSITORY: ${{ vars.ECR_NAMESPACE }}/template-ci-cd
   IMAGE_TAG: v${{ github.run_number }}-${{ github.sha }}
 
 jobs:
