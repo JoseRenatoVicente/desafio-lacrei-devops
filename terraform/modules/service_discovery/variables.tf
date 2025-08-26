@@ -1,3 +1,7 @@
+variable "organization_name" {
+  description = "Nome da organização"
+  type        = string
+}
 variable "project_name" {
   description = "Name of the project"
   type        = string

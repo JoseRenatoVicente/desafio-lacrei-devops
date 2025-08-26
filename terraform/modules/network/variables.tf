@@ -1,3 +1,12 @@
+variable "organization_name" {
+  description = "Nome da organização"
+  type        = string
+}
+variable "ecr_repositories" {
+  description = "Lista de repositórios ECR para criar"
+  type        = list(string)
+}
+
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
   type        = string

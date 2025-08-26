@@ -21,10 +21,23 @@ provider "aws" {
   }
 }
 
+# IAM Resources
+module "iam" {
+  source     = "./modules/iam"
+  organization_name = var.organization_name
+  environment  = var.environment
+  github_org = var.github_org
+  github_repo = var.github_repo
+  aws_region = var.aws_region
+  project_name = var.project_name
+}
+
 # VPC and Network Resources
 module "network" {
   source = "./modules/network"
 
+  organization_name = var.organization_name
+  ecr_repositories = var.ecr_repositories
   project_name = var.project_name
   environment  = var.environment
   vpc_cidr     = var.vpc_cidr
@@ -35,6 +48,7 @@ module "network" {
 module "ecs" {
   source = "./modules/ecs"
 
+  organization_name = var.organization_name
   project_name    = var.project_name
   environment     = var.environment
   vpc_id         = module.network.vpc_id
@@ -45,7 +59,6 @@ module "ecs" {
   desired_count  = var.desired_count
   
   nlb_target_group_arn = module.network.nlb_target_group_arn
-  cloudwatch_log_group_name     = "/ecs/${var.project_name}"
 
   depends_on = [module.network]
 }
@@ -54,6 +67,7 @@ module "ecs" {
 module "service_discovery" {
   source = "./modules/service_discovery"
 
+  organization_name = var.organization_name
   project_name = var.project_name
   environment  = var.environment
   vpc_id       = module.network.vpc_id
@@ -65,6 +79,7 @@ module "service_discovery" {
 module "api_gateway" {
   source = "./modules/api_gateway"
 
+  organization_name                 = var.organization_name
   project_name                      = var.project_name
   environment                       = var.environment
   vpc_id                           = module.network.vpc_id

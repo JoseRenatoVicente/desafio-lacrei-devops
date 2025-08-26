@@ -1,7 +1,7 @@
 
 # Cluster ECS
 resource "aws_ecs_cluster" "main" {
-  name = "${var.project_name}-cluster-${var.environment}"
+  name = "${var.organization_name}-${var.environment}-cluster"
 
   setting {
     name  = "containerInsights"
@@ -11,7 +11,7 @@ resource "aws_ecs_cluster" "main" {
   tags = {
     Environment = var.environment
     Project     = var.project_name
-    Name        = "${var.project_name}-cluster-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-cluster"
   }
 
   lifecycle {
@@ -21,7 +21,7 @@ resource "aws_ecs_cluster" "main" {
 
 # Task Role
 resource "aws_iam_role" "task_role" {
-  name = "${var.project_name}-task-role-${var.environment}"
+  name = "${var.organization_name}-${var.environment}-task-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -39,13 +39,13 @@ resource "aws_iam_role" "task_role" {
   tags = {
     Environment = var.environment
     Project     = var.project_name
-    Name        = "${var.project_name}-task-role-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-task-role"
   }
 }
 
 # Task Execution Role
 resource "aws_iam_role" "task_execution_role" {
-  name = "${var.project_name}-task-execution-role-${var.environment}"
+  name = "${var.organization_name}-${var.environment}-task-execution-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -63,7 +63,7 @@ resource "aws_iam_role" "task_execution_role" {
   tags = {
     Environment = var.environment
     Project     = var.project_name
-    Name        = "${var.project_name}-task-execution-role-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-task-execution-role"
   }
 }
 
@@ -72,12 +72,23 @@ resource "aws_iam_role_policy_attachment" "task_execution_role_policy" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
+# CloudWatch Log Group for ECS
+resource "aws_cloudwatch_log_group" "ecs" {
+  name              = "/aws/ecs/${var.organization_name}-${var.environment}"
+  retention_in_days = 30
+
+  tags = {
+    Name        = "${var.organization_name}-${var.environment}-ecs-logs"
+    Environment = var.environment
+  }
+}
+
 # Task Definition
 resource "aws_ecs_task_definition" "app" {
-  family                   = "${var.project_name}-task-${var.environment}"
+  family                   = "${var.organization_name}-${var.environment}-task"
   container_definitions    = jsonencode([
     {
-      name  = "${var.project_name}-container-${var.environment}"
+      name  = "${var.organization_name}-${var.environment}-${var.project_name}"
       image = var.container_image
       portMappings = [
         {
@@ -102,7 +113,7 @@ resource "aws_ecs_task_definition" "app" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = var.cloudwatch_log_group_name
+          "awslogs-group"         = aws_cloudwatch_log_group.ecs.name
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "ecs"
         }
@@ -120,13 +131,13 @@ resource "aws_ecs_task_definition" "app" {
   tags = {
     Environment = var.environment
     Project     = var.project_name
-    Name        = "${var.project_name}-task-def-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-task-def"
   }
 }
 
 # Security Group para o serviço ECS
 resource "aws_security_group" "ecs_service" {
-  name        = "${var.project_name}-ecs-service-sg-${var.environment}"
+  name        = "${var.organization_name}-${var.environment}-ecs-service-sg"
   description = "Security group for ECS service"
   vpc_id      = var.vpc_id
 
@@ -147,7 +158,7 @@ resource "aws_security_group" "ecs_service" {
 
 # Serviço ECS
 resource "aws_ecs_service" "main" {
-  name                = "${var.project_name}-service-${var.environment}"
+  name                = "${var.organization_name}-${var.environment}-service"
   cluster             = aws_ecs_cluster.main.id
   task_definition     = aws_ecs_task_definition.app.arn
   desired_count       = var.desired_count
@@ -162,7 +173,7 @@ resource "aws_ecs_service" "main" {
 
   load_balancer {
     target_group_arn = var.nlb_target_group_arn
-    container_name   = "${var.project_name}-container-${var.environment}"
+    container_name   = "${var.organization_name}-${var.environment}-${var.project_name}"
     container_port   = var.container_port
   }
 

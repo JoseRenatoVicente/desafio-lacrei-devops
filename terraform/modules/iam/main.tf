@@ -1,12 +1,9 @@
-# OIDC Provider para GitHub Actions
-resource "aws_iam_openid_connect_provider" "github" {
-  url = "https://token.actions.githubusercontent.com"
-  client_id_list = ["sts.amazonaws.com"]
-}
+# Recupera dinamicamente o Account ID da AWS
+data "aws_caller_identity" "current" {}
 
 # Role para GitHub Actions assumir via OIDC
 resource "aws_iam_role" "github_actions" {
-  name = var.rolename
+  name = "${var.organization_name}-${var.environment}-github-actions-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -14,7 +11,7 @@ resource "aws_iam_role" "github_actions" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = aws_iam_openid_connect_provider.github.arn
+          Federated = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:oidc-provider/token.actions.githubusercontent.com"
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
@@ -32,7 +29,7 @@ resource "aws_iam_role" "github_actions" {
 
 # Policy de permissões para a role
 resource "aws_iam_policy" "github_actions_policy" {
-  name = "githubaction-policy"
+  name = "${var.organization_name}-${var.environment}-github-action-policy"
   description = "Permissões para CI/CD GitHub Actions"
 
   policy = jsonencode({

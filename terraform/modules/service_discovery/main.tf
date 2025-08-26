@@ -1,18 +1,18 @@
 # Service Discovery Namespace
 resource "aws_service_discovery_private_dns_namespace" "main" {
-  name        = "${var.project_name}.local"
+  name        = "${var.organization_name}-${var.environment}.local"
   vpc         = var.vpc_id
   description = "Private DNS namespace for ${var.project_name}"
 
   tags = {
-    Name        = "${var.project_name}-namespace-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-namespace"
     Environment = var.environment
   }
 }
 
 # Service Discovery Service
 resource "aws_service_discovery_service" "main" {
-  name = "${var.project_name}-${var.environment}"
+  name = "${var.organization_name}-${var.environment}-discovery-service"
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.main.id
@@ -30,7 +30,7 @@ resource "aws_service_discovery_service" "main" {
   }
 
   tags = {
-    Name        = "${var.project_name}-discovery-service-${var.environment}"
+    Name        = "${var.organization_name}-${var.environment}-discovery-service"
     Environment = var.environment
   }
 }
