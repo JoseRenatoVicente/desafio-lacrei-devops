@@ -231,6 +231,7 @@ jobs:
           sed -i "s/{{ACCOUNT_ID}}/${{ secrets.AWS_ACCOUNT_ID }}/g" task-definition-temp.json
           sed -i "s/{{ORG_NAME}}/${{ vars.ORG_NAME }}/g" task-definition-temp.json
           sed -i "s/{{ENVIRONMENT}}/${{ env.ENVIRONMENT }}/g" task-definition-temp.json
+          sed -i "s/{{AWS_REGION}}/${{ vars.AWS_REGION }}/g" task-definition-temp.json
 
       - name: Render ECS Task Definition
         id: render-task-def
@@ -257,14 +258,58 @@ jobs:
           wait-for-service-stability: true
           force-new-deployment: true
 
-      - name: Criar Release
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: deploy-ecs
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Health Check
+        run: |
+          echo "🏥 Testing Health Check endpoint..."
+          echo "URL: ${{ vars.API_URL}}/health"
+
+          max_retries=30
+          count=0
+          while [ $count -lt $max_retries ]; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.API_URL}}/health")
+            if [ "$response" = "200" ]; then
+              echo "✅ Health check passed! (Status: $response)"
+              exit 0
+            fi
+            echo "⏳ Attempt $((count+1))/$max_retries - Status: $response"
+            sleep 10
+            count=$((count+1))
+          done
+
+          echo "❌ Health check failed after $max_retries attempts"
+          exit 1
+
+      - name: API Status Check
+        run: |
+          echo "📊 Testing Status endpoint..."
+          response_code=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.API_URL}}/status")
+          echo "Status endpoint response: $response_code"
+          if [ "$response_code" != "200" ]; then
+            echo "❌ Status check failed! (Status: $response_code)"
+            exit 1
+          fi
+          echo "✅ Status check passed!"
+
+      - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }} - ${{ steps.deployment.outputs.environment }}
+          release_name: Release v${{ github.run_number }}
           body: |
             ## 🚀 Resumo do Deploy
 
@@ -272,9 +317,9 @@ jobs:
             **Commit:** ${{ github.sha }}
 
             ### 📋 Endpoints da API:
-            - **Health Check:** `${{ steps.deployment.outputs.service_url }}/health`
-            - **Status:** `${{ steps.deployment.outputs.service_url }}/status`
-            - **Root:** `${{ steps.deployment.outputs.service_url }}/`
+            - **Health Check:** `${{ vars.API_URL}}/health`
+            - **Status:** `${{ vars.API_URL}}/status`
+            - **Root:** `${{ vars.API_URL}}/`
 
             ## 📝 Alterações
 

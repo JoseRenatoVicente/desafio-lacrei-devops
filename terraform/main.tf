@@ -44,6 +44,16 @@ module "network" {
   container_port = var.container_port
 }
 
+# Monitoring Resources
+module "monitoring" {
+  source = "./modules/monitoring"
+  
+  organization_name = var.organization_name
+  environment      = var.environment
+  alarm_email      = var.alarm_email
+  api_id         = module.api_gateway.api_id
+}
+
 # ECS Resources
 module "ecs" {
   source = "./modules/ecs"
