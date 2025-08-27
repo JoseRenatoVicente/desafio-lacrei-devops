@@ -231,6 +231,7 @@ jobs:
           sed -i "s/{{ACCOUNT_ID}}/${{ secrets.AWS_ACCOUNT_ID }}/g" task-definition-temp.json
           sed -i "s/{{ORG_NAME}}/${{ vars.ORG_NAME }}/g" task-definition-temp.json
           sed -i "s/{{ENVIRONMENT}}/${{ env.ENVIRONMENT }}/g" task-definition-temp.json
+          sed -i "s/{{AWS_REGION}}/${{ vars.AWS_REGION }}/g" task-definition-temp.json
 
       - name: Render ECS Task Definition
         id: render-task-def
