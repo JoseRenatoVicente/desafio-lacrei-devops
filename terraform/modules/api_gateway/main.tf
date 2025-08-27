@@ -50,7 +50,7 @@ resource "aws_security_group" "vpc_link" {
 resource "aws_apigatewayv2_integration" "main" {
   api_id           = aws_apigatewayv2_api.main.id
   integration_type = "HTTP_PROXY"
-  integration_uri  = var.nlb_listener_arn
+  integration_uri  = var.alb_listener_arn
   integration_method = "ANY"
   connection_type    = "VPC_LINK"
   connection_id      = aws_apigatewayv2_vpc_link.main.id

@@ -28,7 +28,7 @@ variable "container_port" {
   type        = number
 }
 
-variable "nlb_listener_arn" {
-  description = "ARN do listener do NLB"
+variable "alb_listener_arn" {
+  description = "ARN do listener do ALB"
   type        = string
 }

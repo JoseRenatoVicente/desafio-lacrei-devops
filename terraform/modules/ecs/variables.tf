@@ -46,6 +46,6 @@ variable "desired_count" {
 }
 
 variable "nlb_target_group_arn" {
-  description = "ARN do Target Group do NLB"
+  description = "ARN do Target Group do ALB"
   type        = string
 }
