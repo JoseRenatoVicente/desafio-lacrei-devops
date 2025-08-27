@@ -94,6 +94,36 @@ describe('API Endpoints', () => {
     });
   });
 
+  describe('GET /latency', () => {
+    it('should delay the response by at least the default time (5s)', async () => {
+      const start = Date.now();
+      const res = await request(app).get('/latency');
+      const duration = Date.now() - start;
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toHaveProperty('message');
+      expect(duration).toBeGreaterThanOrEqual(4900);
+    }, 10000);
+
+    it('should delay the response by the specified ms', async () => {
+      const delay = 1000;
+      const start = Date.now();
+      const res = await request(app).get(`/latency?ms=${delay}`);
+      const duration = Date.now() - start;
+      expect(res.statusCode).toBe(200);
+      expect(res.body.message).toContain(`${delay}ms`);
+      expect(duration).toBeGreaterThanOrEqual(delay - 50); // margem de erro
+    });
+  });
+
+  describe('GET /error', () => {
+    it('should always return 500 error', async () => {
+      const res = await request(app).get('/error');
+      expect(res.statusCode).toBe(500);
+      expect(res.body).toHaveProperty('error', 'Erro interno simulado');
+      expect(res.body).toHaveProperty('message');
+    });
+  });
+
   describe('POST /status', () => {
     it('should return 404 for non-GET methods on status', async () => {
       const res = await request(app).post('/status');

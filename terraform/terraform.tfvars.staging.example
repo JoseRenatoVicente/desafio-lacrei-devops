@@ -1,10 +1,10 @@
 project_name = "template-ci-cd"
 environment  = "staging"
 aws_region   = "us-east-1"
-
+ecr_repositories = ["template-ci-cd"]
+alarm_email  = "contato@renatovicente.dev"
 vpc_cidr = "10.1.0.0/16"  # CIDR diferente do ambiente de prod para evitar conflitos
-
 container_image = "038462749081.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:staging"
 container_port  = 3000
-
 desired_count = 1
+health_check_path = "/health"

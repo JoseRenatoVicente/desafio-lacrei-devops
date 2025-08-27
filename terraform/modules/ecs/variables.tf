@@ -1,3 +1,8 @@
+variable "organization_name" {
+  description = "Nome da organização"
+  type        = string
+}
+
 variable "project_name" {
   description = "Name of the project"
   type        = string
@@ -40,13 +45,7 @@ variable "desired_count" {
   default     = 1
 }
 
-
-variable "cloudwatch_log_group_name" {
-  description = "Name of the CloudWatch log group"
-  type        = string
-}
-
 variable "nlb_target_group_arn" {
-  description = "ARN do Target Group do NLB"
+  description = "ARN do Target Group do ALB"
   type        = string
 }

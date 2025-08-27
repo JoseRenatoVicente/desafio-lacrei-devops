@@ -4,7 +4,8 @@ on:
   push:
     branches: [main, develop]
   pull_request:
-    branches: [main]
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
 
 permissions:
   contents: write
@@ -13,7 +14,10 @@ permissions:
   deployments: write
 
 env:
-  IMAGE_NAME: template-ci-cd
+  REPO_NAME: template-ci-cd
+  ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+  ECR_REPOSITORY: ${{ vars.ECR_NAMESPACE }}/template-ci-cd
+  IMAGE_TAG: v${{ github.run_number }}-${{ github.sha }}
 
 jobs:
   lint:
@@ -125,19 +129,19 @@ jobs:
           push: false
           load: true
           platforms: linux/amd64
-          tags: ${{ env.IMAGE_NAME }}:scan
+          tags: ${{ env.REPO_NAME }}:scan
           cache-from: type=gha,scope=buildx-scan
         timeout-minutes: 5
 
       - name: Verify Docker image exists
         run: |
           docker images | grep template-ci-cd || echo "❌ Image not found"
-          docker inspect ${{ env.IMAGE_NAME }}:scan || echo "❌ Image inspect failed"
+          docker inspect ${{ env.REPO_NAME }}:scan || echo "❌ Image inspect failed"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:scan
+          image-ref: ${{ env.REPO_NAME }}:scan
           format: 'sarif'
           output: 'trivy-results.sarif'
           timeout: '5m'
@@ -177,7 +181,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         if: github.event_name == 'pull_request'
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:scan
+          image-ref: ${{ env.REPO_NAME }}:scan
           format: 'table'
           exit-code: '0'
 
@@ -189,18 +193,20 @@ jobs:
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     environment:
       name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
-      url: ${{ steps.deployment.outputs.service_url }}
-
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v4.3.1
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ secrets.AWS_ROLE_NAME }}
+          role-session-name: gh-oidc-${{ env.REPO_NAME }}-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          role-duration-seconds: 3600
 
       - name: Login to Amazon ECR
         id: login-ecr
@@ -208,173 +214,112 @@ jobs:
 
       - name: Set environment variables
         run: |
-          if [ "${{ github.ref }}" == "refs/heads/main" ]; then
-            echo "ENVIRONMENT=prod" >> $GITHUB_ENV
-            echo "IMAGE_TAG=prod-${{ github.sha }}" >> $GITHUB_ENV
-            echo "SERVICE_NAME=template-ci-cd-service-prod" >> $GITHUB_ENV
-          else
-            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
-            echo "IMAGE_TAG=staging-${{ github.sha }}" >> $GITHUB_ENV
-            echo "SERVICE_NAME=template-ci-cd-service-staging" >> $GITHUB_ENV
-          fi
-          echo "ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}" >> $GITHUB_ENV
-          echo "ECR_REPOSITORY=template-ci-cd" >> $GITHUB_ENV
+          echo ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }} >> $GITHUB_ENV
 
       - name: Build Docker image
         run: |
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
-          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:latest .
+          docker build -t $ECR_REGISTRY/${{ vars.ECR_NAMESPACE }}/${{ env.REPO_NAME }}:$IMAGE_TAG .
 
       - name: Push image to Amazon ECR
         run: |
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/${{ vars.ECR_NAMESPACE }}/${{ env.REPO_NAME }}:$IMAGE_TAG
 
-      - name: Deploy to Amazon ECS
+      - name: Replace ECS Task Definition
         run: |
-          export AWS_ACCOUNT_ID=$(echo "${{ steps.login-ecr.outputs.registry }}" | cut -d'.' -f1)
-          CLUSTER_NAME="${{ vars.ECS_CLUSTER_NAME }}"
-          SERVICE_NAME="${{ vars.ECS_SERVICE_NAME_PREFIX }}"
-
-          # Preparar arquivo de definição de task
           cp .github/.aws/task-definition.json task-definition-temp.json
 
-          # Substituir placeholders na definição de task
-          sed -i "s/{{ACCOUNT_ID}}/$AWS_ACCOUNT_ID/g" task-definition-temp.json
-          sed -i "s|{{ECR_REPOSITORY_URI}}|$ECR_REGISTRY/$ECR_REPOSITORY|g" task-definition-temp.json
-          sed -i "s/{{IMAGE_TAG}}/$IMAGE_TAG/g" task-definition-temp.json
-          sed -i "s/{{ENVIRONMENT}}/$ENVIRONMENT/g" task-definition-temp.json
-          sed -i "s/{{RELEASE_VERSION}}/v${{ github.run_number }}/g" task-definition-temp.json
-          sed -i "s/{{GIT_COMMIT}}/${{ github.sha }}/g" task-definition-temp.json
-          sed -i "s/{{ECS_SERVICE}}/$SERVICE_NAME/g" task-definition-temp.json
-          sed -i "s/{{ECS_CLUSTER}}/$CLUSTER_NAME/g" task-definition-temp.json
+          sed -i "s/{{ACCOUNT_ID}}/${{ secrets.AWS_ACCOUNT_ID }}/g" task-definition-temp.json
+          sed -i "s/{{ORG_NAME}}/${{ vars.ORG_NAME }}/g" task-definition-temp.json
+          sed -i "s/{{ENVIRONMENT}}/${{ env.ENVIRONMENT }}/g" task-definition-temp.json
+          sed -i "s/{{AWS_REGION}}/${{ vars.AWS_REGION }}/g" task-definition-temp.json
 
-          # Registrar nova definição de task
-          TASK_DEFINITION_ARN=$(aws ecs register-task-definition \
-            --cli-input-json file://task-definition-temp.json \
-            --query 'taskDefinition.taskDefinitionArn' \
-            --output text)
+      - name: Render ECS Task Definition
+        id: render-task-def
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition-temp.json
+          environment-variables: |
+            ACCOUNT_ID=${{ secrets.AWS_ACCOUNT_ID }}
+            ENVIRONMENT=${{ env.ENVIRONMENT }}
+            RELEASE_VERSION=${{ env.IMAGE_TAG }}
+            GIT_COMMIT=${{ github.sha }}
+            ECS_SERVICE=${{ vars.ECS_SERVICE_NAME_PREFIX }}
+            ECS_CLUSTER=${{ vars.ECS_CLUSTER_NAME }}
+          container-name: ${{ vars.ORG_NAME }}-${{ env.ENVIRONMENT }}-template-ci-cd
+          image: ${{ env.ECR_REGISTRY }}/${{ vars.ECR_NAMESPACE }}/${{ env.REPO_NAME }}:${{ env.IMAGE_TAG }}
 
-          # Atualizar o serviço ECS existente
-          aws ecs update-service \
-            --cluster "$CLUSTER_NAME" \
-            --service "$SERVICE_NAME" \
-            --task-definition "$TASK_DEFINITION_ARN" \
-            --force-new-deployment
+      - name: Deploy to ECS
+        id: deploy
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render-task-def.outputs.task-definition }}
+          cluster: ${{ vars.ECS_CLUSTER_NAME }}
+          service: ${{ vars.ECS_SERVICE_NAME_PREFIX }}
+          wait-for-service-stability: true
+          force-new-deployment: true
 
+  smoke-test:
+    name: Smoke Test
+    runs-on: ubuntu-latest
+    needs: deploy-ecs
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+    environment:
+      name: ${{ github.ref == 'refs/heads/main' && 'prod' || 'staging' }}
+    permissions:
+      id-token: write
+      contents: read
 
-          # Checagem rápida de status
-          echo "📊 Status atual do serviço:"
-          aws ecs describe-services \
-            --cluster "$CLUSTER_NAME" \
-            --services "$SERVICE_NAME" \
-            --query 'services[0].{Status:status,Running:runningCount,Desired:desiredCount,TaskDefinition:taskDefinition}' \
-            --output table
-
-      - name: Get deployment info
-        id: deployment
+    steps:
+      - name: Health Check
         run: |
-          echo "🔍 Getting deployment information..."
+          echo "🏥 Testing Health Check endpoint..."
+          echo "URL: ${{ vars.API_URL}}/health"
 
-          # 1. Try Service Discovery config first (most reliable)
-          SERVICE_URL=""
-          if [ -f "service-discovery-config.env" ]; then
-            source service-discovery-config.env
-            if [ "$ENVIRONMENT" = "prod" ]; then
-              SERVICE_URL="$API_PROD_URL"
-              echo "🌐 Using Service Discovery PROD URL: $SERVICE_URL"
-            else
-              SERVICE_URL="$API_STAGING_URL"
-              echo "🌐 Using Service Discovery STAGING URL: $SERVICE_URL"
+          max_retries=30
+          count=0
+          while [ $count -lt $max_retries ]; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.API_URL}}/health")
+            if [ "$response" = "200" ]; then
+              echo "✅ Health check passed! (Status: $response)"
+              exit 0
             fi
-          fi
+            echo "⏳ Attempt $((count+1))/$max_retries - Status: $response"
+            sleep 10
+            count=$((count+1))
+          done
 
-          # 2. Fallback: Try legacy api-gateway-config.env
-          if [ -z "$SERVICE_URL" ] && [ -f "api-gateway-config.env" ]; then
-            if [ "$ENVIRONMENT" = "prod" ]; then
-              API_URL=$(grep "API_PROD_URL=" api-gateway-config.env | cut -d'=' -f2 || echo "")
-              if [ -n "$API_URL" ] && [ "$API_URL" != "" ]; then
-                SERVICE_URL="$API_URL"
-                echo "🌐 Using Legacy API Gateway PROD URL: $SERVICE_URL"
-              fi
-            else
-              API_URL=$(grep "API_STAGING_URL=" api-gateway-config.env | cut -d'=' -f2 || echo "")
-              if [ -n "$API_URL" ] && [ "$API_URL" != "" ]; then
-                SERVICE_URL="$API_URL"
-                echo "🌐 Using Legacy API Gateway STAGING URL: $SERVICE_URL"
-              fi
-            fi
-          fi
+          echo "❌ Health check failed after $max_retries attempts"
+          exit 1
 
-          # 3. Fallback: Direct API Gateway discovery (no IP dependency)
-          if [ -z "$SERVICE_URL" ]; then
-            echo "🔍 Searching for API Gateway directly..."
-            if [ "$ENVIRONMENT" = "prod" ]; then
-              API_ID=$(aws apigatewayv2 get-apis --query 'Items[?Name==`template-ci-cd-api-prod`].ApiId' --output text 2>/dev/null || echo "")
-            else
-              API_ID=$(aws apigatewayv2 get-apis --query 'Items[?Name==`template-ci-cd-api-staging`].ApiId' --output text 2>/dev/null || echo "")
-            fi
-            
-            if [ -n "$API_ID" ] && [ "$API_ID" != "None" ] && [ "$API_ID" != "" ]; then
-              SERVICE_URL="https://$API_ID.execute-api.us-east-1.amazonaws.com"
-              echo "🌐 Found API Gateway: $SERVICE_URL"
-            fi
-          fi
-
-          # 4. Final fallback: Informational message (no ECS IP - unreliable)
-          if [ -z "$SERVICE_URL" ]; then
-            SERVICE_URL="https://github.com/JoseRenatoVicente/template-ci-cd/deployments"
-            echo "⚠️ No API Gateway found, deployment successful but URL not available"
-            echo "ℹ️  This is expected for first-time setup or if Service Discovery is not configured"
-          fi
-
-          echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
-          echo "environment=$ENVIRONMENT" >> $GITHUB_OUTPUT
-
-      - name: Test deployed service
-        if: contains(steps.deployment.outputs.service_url, 'http')
+      - name: API Status Check
         run: |
-          echo "🧪 Testing deployed service..."
-          SERVICE_URL="${{ steps.deployment.outputs.service_url }}"
-          ENVIRONMENT="${{ steps.deployment.outputs.environment }}"
+          echo "📊 Testing Status endpoint..."
+          response_code=$(curl -s -o /dev/null -w "%{http_code}" "${{ vars.API_URL}}/status")
+          echo "Status endpoint response: $response_code"
+          if [ "$response_code" != "200" ]; then
+            echo "❌ Status check failed! (Status: $response_code)"
+            exit 1
+          fi
+          echo "✅ Status check passed!"
 
-          echo "Testing service at: $SERVICE_URL"
-
-          # Test health endpoint
-          echo "Testing health endpoint..."
-          curl -f "$SERVICE_URL/health" || echo "Health endpoint test failed"
-
-          # Test status endpoint  
-          echo "Testing status endpoint..."
-          curl -f "$SERVICE_URL/status" || echo "Status endpoint test failed"
-
-          # Test root endpoint
-          echo "Testing root endpoint..."
-          curl -f "$SERVICE_URL/" || echo "Root endpoint test failed"
-
-      - name: Criar Release
+      - name: Create Release
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ github.run_number }}
-          release_name: Release v${{ github.run_number }} - ${{ steps.deployment.outputs.environment }}
+          release_name: Release v${{ github.run_number }}
           body: |
             ## 🚀 Resumo do Deploy
 
-            **Ambiente:** ${{ steps.deployment.outputs.environment }}
-            **Deploy realizado em:** $(date)
+            **Deploy realizado em:** ${{ github.run_started_at }}
             **Commit:** ${{ github.sha }}
 
-            ## 🔗 URLs de Acesso (HTTPS)
-
-            **🌍 API Produção:** ${{ steps.deployment.outputs.service_url }}
-
             ### 📋 Endpoints da API:
-            - **Health Check:** `${{ steps.deployment.outputs.service_url }}/health`
-            - **Status:** `${{ steps.deployment.outputs.service_url }}/status`
-            - **Root:** `${{ steps.deployment.outputs.service_url }}/`
+            - **Health Check:** `${{ vars.API_URL}}/health`
+            - **Status:** `${{ vars.API_URL}}/status`
+            - **Root:** `${{ vars.API_URL}}/`
 
             ## 📝 Alterações
 
