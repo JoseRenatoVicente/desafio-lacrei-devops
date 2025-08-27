@@ -3,9 +3,10 @@
 Aplicação de exemplo para CI/CD moderno usando Node.js, Docker, AWS ECS Fargate e GitHub Actions.
 
 ## Links de Acesso
+
 > **Obs:** Devido à falta de domínio, os certificados para o ALB são auto-assinados.
 
-- **Produção:** *[https://jrv-prod-alb-2098066532.us-east-1.elb.amazonaws.com/]*
+- **Produção:** _[https://jrv-prod-alb-2098066532.us-east-1.elb.amazonaws.com/]_
 - **Staging:** [https://jrv-staging-alb-815742207.us-east-1.elb.amazonaws.com/](https://jrv-staging-alb-815742207.us-east-1.elb.amazonaws.com/)
 
 ## 🚀 Visão Geral
@@ -67,7 +68,6 @@ graph TD
 	B -- VPC_Subnets --> G[VPC_Subnets]
 ```
 
-
 ## 🏗️ Infraestrutura com Terraform
 
 Este projeto possui scripts em Terraform para construir toda a infraestrutura necessária na AWS.
@@ -93,6 +93,7 @@ Este projeto possui scripts em Terraform para construir toda a infraestrutura ne
 Workspace Shared não é necessario nenhum variavel
 
 Staging e Prod
+
 ```
 project_name = "template-ci-cd"
 environment  = "staging"
@@ -104,6 +105,7 @@ container_port  = 3000
 desired_count = 1
 health_check_path = "/health"
 ```
+
 ## Como utilizar usando powershell
 
 1. Ajuste as variáveis de acordo com seu ambiente nos arquivos:
@@ -114,18 +116,17 @@ health_check_path = "/health"
    cd .\terraform\
    ```
 3. Execute o script de deploy:
+
    ```powershell
    .\deploy.ps1
    ```
 
-
-4. Digite o workspace **shared** - ele deve ser o primeiro ao fazer deploy, pois contém recursos compartilhados entre ambientes. 
-> **Importante:** No mundo real isso não é ideal. É fortemente recomendado o uso de contas diferentes para cada ambiente!
+4. Digite o workspace **shared** - ele deve ser o primeiro ao fazer deploy, pois contém recursos compartilhados entre ambientes.
+   > **Importante:** No mundo real isso não é ideal. É fortemente recomendado o uso de contas diferentes para cada ambiente!
 
 ## Deploy Manual da Infraestrutura
 
 ### Subindo o ambiente Shared
-
 
 # Deploy da manual da infraestrutura
 
@@ -175,7 +176,6 @@ terraform workspace select $workspace
 terraform destroy -var-file="$varFile" -auto-approve
 ```
 
-
 > **Obs:** Considere utilizar o CloudShell como boa prática!
 
 O script irá aplicar a infraestrutura conforme as configurações definidas. Note que os recursos criados seguem o padrão de nomenclatura: `<NOME-DA-ORGANIZAÇÃO>-<AMBIENTE>-<NOME-DO-RECURSO>`, exemplo: `jrv-prod-cluster`
@@ -207,16 +207,17 @@ docker build -t template-ci-cd .
 docker run -p 3000:3000 template-ci-cd
 ```
 
-
 ## 🔑 Variáveis de Ambiente e Secrets Necessários
 
 Devem ser criados dois ambientes: staging e prod, com as seguintes variáveis dos respectivos ambientes:
 
 ### GitHub Secrets
+
 - `AWS_ACCOUNT_ID`: ID da conta AWS
 - `AWS_ROLE_NAME`: Role do github-actions
 
 ### GitHub Actions Variables
+
 - `API_URL`: Link da API para smoke test
 - `AWS_REGION`: us-east-1
 - `ECR_NAMESPACE`: `<ORGANIZAÇÃO>-<AMBIENTE>-ecr`
