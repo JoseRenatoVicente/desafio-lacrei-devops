@@ -38,7 +38,13 @@ resource "aws_iam_policy" "github_actions_policy" {
       {
         Effect = "Allow"
         Action = [
-          "ecr:GetAuthorizationToken",
+          "ecr:GetAuthorizationToken"
+        ]
+        Resource = "*"  # GetAuthorizationToken só funciona com "*" como recurso
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "ecr:BatchCheckLayerAvailability",
           "ecr:PutImage",
           "ecr:InitiateLayerUpload",
@@ -46,16 +52,25 @@ resource "aws_iam_policy" "github_actions_policy" {
           "ecr:CompleteLayerUpload",
           "ecr:BatchGetImage"
         ]
-        Resource = "*"
+        Resource = "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${var.organization_name}-${var.environment}-ecr/*"
       },
       {
         Effect = "Allow"
         Action = [
-          "ecs:RegisterTaskDefinition",
+          "ecs:RegisterTaskDefinition"
+        ]
+        Resource = "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:task-definition/${var.organization_name}-${var.environment}*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "ecs:UpdateService",
           "ecs:DescribeServices"
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:cluster/${var.organization_name}-${var.environment}*",
+          "arn:aws:ecs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:service/${var.organization_name}-${var.environment}*"
+        ]
       },
       {
         Effect = "Allow"
@@ -64,21 +79,20 @@ resource "aws_iam_policy" "github_actions_policy" {
           "logs:PutLogEvents",
           "logs:CreateLogGroup"
         ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "apigateway:GET"
+        Resource = [
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/ecs/${var.organization_name}-${var.environment}*:*",
+          "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-stream:/aws/ecs/${var.organization_name}-${var.environment}*:*"
         ]
-        Resource = "*"
       },
       {
         Effect = "Allow"
         Action = [
           "iam:PassRole"
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.organization_name}-${var.environment}-task-execution-role",
+          "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/${var.organization_name}-${var.environment}-task-role"
+        ]
       }
     ]
   })

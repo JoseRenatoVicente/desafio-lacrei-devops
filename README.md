@@ -2,14 +2,21 @@
 
 Aplicação de exemplo para CI/CD moderno usando Node.js, Docker, AWS ECS Fargate e GitHub Actions.
 
+## Links de Acesso
+
+> **Obs:** Devido à falta de domínio, os certificados para o ALB são auto-assinados.
+
+- **Produção:** _[https://jrv-prod-alb-2098066532.us-east-1.elb.amazonaws.com/]_
+- **Staging:** [https://jrv-staging-alb-815742207.us-east-1.elb.amazonaws.com/](https://jrv-staging-alb-815742207.us-east-1.elb.amazonaws.com/)
+
 ## 🚀 Visão Geral
 
-- API Node.js simples com rota `/status`.
-- Deploy automatizado para ambientes **staging** e **produção** na AWS.
-- Pipeline CI/CD robusto com validações, testes, build, scan e deploy.
-- Segurança reforçada (least privilege, secrets, distroless, root FS readonly, drop capabilities).
-- Rollback automatizado via workflow.
-- Observabilidade: logs no CloudWatch, healthcheck, integração CloudWatch.
+- API Node.js simples com rota `/status`
+- Deploy automatizado para ambientes **staging** e **produção** na AWS
+- Pipeline CI/CD robusto com validações, testes, build, scan e deploy
+- Segurança reforçada (least privilege, secrets, distroless, root FS readonly, drop capabilities)
+- Rollback automatizado via workflow
+- Observabilidade: logs no CloudWatch, healthcheck, integração CloudWatch
 
 ## 🔄 Fluxo do Pipeline CI/CD
 
@@ -53,7 +60,7 @@ flowchart TD
 ```mermaid
 graph TD
 	H[Usuario] --> A[API_Gateway_HTTP]
-	A -- VPC_Link --> B[NLB]
+	A -- VPC_Link --> B[ALB]
 	B -- Target_Group --> C[ECS_Service]
 	C -- Task --> D[ECS_Fargate_Container]
 	D -- Logs --> E[CloudWatch_Logs]
@@ -61,11 +68,45 @@ graph TD
 	B -- VPC_Subnets --> G[VPC_Subnets]
 ```
 
-# Infraestrutura com Terraform
+## 🏗️ Infraestrutura com Terraform
 
 Este projeto possui scripts em Terraform para construir toda a infraestrutura necessária na AWS.
 
-## Como utilizar
+### Variáveis
+
+**Workspace Shared:** não é necessária nenhuma variável.
+
+# Exemplo de Variaveis
+
+```
+	project_name = "template-ci-cd"
+	environment = "staging"
+	aws_region = "us-east-1"
+	alarm_email = "contato@renatovicente.dev"
+	vpc_cidr = "10.1.0.0/16"
+	container_image = "038462749081.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:staging"
+	container_port = 3000
+	desired_count = 1
+	health_check_path = "/health"
+```
+
+Workspace Shared não é necessario nenhum variavel
+
+Staging e Prod
+
+```
+project_name = "template-ci-cd"
+environment  = "staging"
+aws_region   = "us-east-1"
+alarm_email  = "contato@renatovicente.dev"
+vpc_cidr = "10.1.0.0/16"
+container_image = "038462749081.dkr.ecr.us-east-1.amazonaws.com/template-ci-cd:staging"
+container_port  = 3000
+desired_count = 1
+health_check_path = "/health"
+```
+
+## Como utilizar usando powershell
 
 1. Ajuste as variáveis de acordo com seu ambiente nos arquivos:
    - `terraform/terraform.tfvars` (produção)
@@ -75,13 +116,71 @@ Este projeto possui scripts em Terraform para construir toda a infraestrutura ne
    cd .\terraform\
    ```
 3. Execute o script de deploy:
+
    ```powershell
    .\deploy.ps1
    ```
 
-O script irá aplicar a infraestrutura conforme as configurações definidas.
+4. Digite o workspace **shared** - ele deve ser o primeiro ao fazer deploy, pois contém recursos compartilhados entre ambientes.
+   > **Importante:** No mundo real isso não é ideal. É fortemente recomendado o uso de contas diferentes para cada ambiente!
 
-## 📦 Estrutura
+## Deploy Manual da Infraestrutura
+
+### Subindo o ambiente Shared
+
+# Deploy da manual da infraestrutura
+
+## Subindo o ambiente de Shared
+
+```
+terraform init
+terraform workspace new staging
+terraform workspace select staging
+terraform state list
+terraform plan -var-file="terraform.tfvars.staging"
+# [confirmação do usuário]
+terraform apply -var-file="terraform.tfvars.staging"
+terraform output
+```
+
+## Subindo Staging
+
+```
+terraform init
+terraform workspace new staging
+terraform workspace select staging
+terraform state list
+terraform plan -var-file="terraform.tfvars.staging"
+# [confirmação do usuário]
+terraform apply -var-file="terraform.tfvars.staging"
+terraform output
+```
+
+## Subindo ambiente de Prod
+
+```
+terraform init
+terraform workspace select default
+terraform state list
+terraform plan -var-file="terraform.tfvars"
+# [confirmação do usuário]
+terraform apply -var-file="terraform.tfvars"
+terraform output
+```
+
+## Destruindo recursos
+
+```
+terraform init
+terraform workspace select $workspace
+terraform destroy -var-file="$varFile" -auto-approve
+```
+
+> **Obs:** Considere utilizar o CloudShell como boa prática!
+
+O script irá aplicar a infraestrutura conforme as configurações definidas. Note que os recursos criados seguem o padrão de nomenclatura: `<NOME-DA-ORGANIZAÇÃO>-<AMBIENTE>-<NOME-DO-RECURSO>`, exemplo: `jrv-prod-cluster`
+
+## 📦 Estrutura do Projeto
 
 ```
 ├── src/                # Código da aplicação
@@ -110,57 +209,48 @@ docker run -p 3000:3000 template-ci-cd
 
 ## 🔑 Variáveis de Ambiente e Secrets Necessários
 
+Devem ser criados dois ambientes: staging e prod, com as seguintes variáveis dos respectivos ambientes:
+
 ### GitHub Secrets
 
-- `AWS_ACCESS_KEY_ID`: Chave de acesso AWS IAM
-- `AWS_SECRET_ACCESS_KEY`: Chave secreta AWS IAM
+- `AWS_ACCOUNT_ID`: ID da conta AWS
+- `AWS_ROLE_NAME`: Role do github-actions
 
-### GitHub Actions Vars
+### GitHub Actions Variables
 
-- `AWS_ACCOUNT_ID`: 038462749081
+- `API_URL`: Link da API para smoke test
 - `AWS_REGION`: us-east-1
-- `ECS_CLUSTER_NAME`: template-ci-cd-cluster-prod
-- `ECS_SECURITY_GROUPS`: sg-03e4ec7b925fb9e59
-- `ECS_SERVICE_NAME_PREFIX`: template-ci-cd-service-prod
-- `ECS_SUBNETS`: subnet-049a6c7f1e04c6b05,subnet-0cbfede9311
+- `ECR_NAMESPACE`: `<ORGANIZAÇÃO>-<AMBIENTE>-ecr`
+- `ECS_CLUSTER_NAME`: `<ORGANIZAÇÃO>-<AMBIENTE>-cluster`
+- `ECS_SERVICE_NAME_PREFIX`: `<ORGANIZAÇÃO>-<AMBIENTE>-service`
+- `ORG_NAME`: `<NOME-DA-ORGANIZAÇÃO>`
 
-> Configure esses valores em Settings > Secrets and variables > Actions no repositório do GitHub.
+> Configure esses valores em **Settings > Secrets and variables > Actions** no repositório do GitHub.
 
 ## ☁️ Deploy na AWS (ECS Fargate)
 
-- Pipeline GitHub Actions faz build, push e deploy automático.
+- Pipeline GitHub Actions faz build, push e deploy automático
 - Task definition: `.github/.aws/task-definition.json`
-- Secrets e variáveis: GitHub Secrets e AWS Secrets Manager.
+- Secrets e variáveis: GitHub Secrets e AWS Secrets Manager
 
 ## 🔄 Rollback
 
-- Use o workflow `rollback.yml` no GitHub Actions.
-- Informe a tag da imagem Docker desejada para reverter o serviço ECS.
+- Use o workflow `rollback.yml` no GitHub Actions
+- Informe a tag da imagem Docker desejada para reverter o serviço ECS
 
 ## 🔒 Segurança
 
-- Usuário não-root, root filesystem readonly, drop capabilities.
-- Políticas IAM mínimas para tasks.
-- Secrets nunca hardcoded.
-- HTTPS via API Gateway/ALB.
+- Usuário não-root, root filesystem readonly, drop capabilities
+- Políticas IAM mínimas para tasks
+- Secrets nunca hardcoded
+- Certificado ACM auto-assinado para exemplificação via API Gateway/ALB
 
 ## 📈 Observabilidade
 
-- Logs enviados ao CloudWatch.
-- Healthcheck configurado no ECS.
+- Logs enviados ao CloudWatch
+- Healthcheck configurado no ECS
+- 2 alertas configurados com envio de e-mail via SNS
 
-## 📝 Checklist rápido
-
-- [x] Deploy funcional (staging/prod)
-- [x] Docker + GitHub Actions + AWS
-- [x] Pipeline CI/CD completo
-- [x] Segurança aplicada
-- [x] Observabilidade
-- [x] Rollback documentado
-- [x] Documentação clara
-
-## 🧯 Rollback manual
-
-- Via workflow `rollback.yml` ou alterando tag da imagem no ECS.
+> **Nota:** Existem as rotas `/latency` e `/error` que simulam esses alertas para testes.
 
 ---
