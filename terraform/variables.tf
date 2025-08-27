@@ -64,3 +64,8 @@ variable "health_check_path" {
   type        = string
   default     = "/health"
 }
+
+variable "alarm_email" {
+  description = "Email para notificações de alarme"
+  type        = string
+}
