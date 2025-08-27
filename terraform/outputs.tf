@@ -32,3 +32,23 @@ output "service_discovery_namespace" {
   description = "Namespace do Service Discovery"
   value       = module.service_discovery.namespace_name
 }
+
+
+
+output "alb_dns_name" {
+  description = "DNS name do Application Load Balancer"
+  value       = module.network.alb_dns_name
+}
+
+output "alb_zone_id" {
+  description = "Route 53 zone ID do ALB"
+  value       = module.network.alb_zone_id
+}
+
+output "dns_settings" {
+  description = "Configurações DNS para DuckDNS"
+  value = {
+    ipv4 = [module.network.alb_dns_name]
+    ipv6 = [] # O ALB não suporta IPv6 por padrão
+  }
+}

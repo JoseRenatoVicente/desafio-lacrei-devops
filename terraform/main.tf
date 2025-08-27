@@ -68,7 +68,7 @@ module "ecs" {
   container_port  = var.container_port
   desired_count  = var.desired_count
   
-  nlb_target_group_arn = module.network.nlb_target_group_arn
+  nlb_target_group_arn = module.network.alb_target_group_arn
 
   depends_on = [module.network]
 }
@@ -94,7 +94,7 @@ module "api_gateway" {
   environment                       = var.environment
   vpc_id                           = module.network.vpc_id
   private_subnets                  = module.network.private_subnets
-  nlb_listener_arn                 = module.network.nlb_listener_arn
+  alb_listener_arn                 = module.network.alb_listener_arn
   container_port                    = var.container_port
 
   depends_on = [module.network, module.ecs]
